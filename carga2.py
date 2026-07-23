@@ -12,8 +12,9 @@ import matplotlib.pyplot as plt
 
 
 # Constantes físicas
-A0 = 5.29177210903e-11      # radio de Bohr [m]
-E_CHARGE = 1.602176634e-19  # carga elemental [C]
+A0 = 1     # radio de Bohr [m]
+E_CHARGE = 1  # carga elemental [C]
+EPSILON_0 = 1/(4*np.pi)  # Permitividad del vacío [F/m]
 
 
 def R_nl(n, l, r, a0=A0):
@@ -120,184 +121,93 @@ def electron_density(psi):
     """
     return -E_CHARGE * np.abs(psi)**2
 
-def _average_pool_3d(arr: np.ndarray, pool_r: int, pool_t: int, pool_p: int) -> np.ndarray:
-    """
-    Reduce una malla 3D por Average Pooling (promediado por bloques).
-
-    Recorta el array para que sea divisible por los factores de pooling,
-    luego reshape en bloques y promedia sobre las dimensiones del bloque.
-
-    Parameters
-    ----------
-    arr : ndarray, shape (Nr, Nt, Np)
-        Array 3D a reducir.
-    pool_r, pool_t, pool_p : int
-        Factores de pooling en cada eje.
-
-    Returns
-    -------
-    ndarray
-        Array reducido de forma (Nr//pool_r, Nt//pool_t, Np//pool_p).
-    """
-    # Recortar para que sea divisible
-    nr, nt, np_ = arr.shape
-    nr_cut = (nr // pool_r) * pool_r
-    nt_cut = (nt // pool_t) * pool_t
-    np_cut = (np_ // pool_p) * pool_p
-    arr = arr[:nr_cut, :nt_cut, :np_cut]
-
-    # Reshape en bloques y promediar
-    return arr.reshape(
-        nr_cut // pool_r, pool_r,
-        nt_cut // pool_t, pool_t,
-        np_cut // pool_p, pool_p,
-    ).mean(axis=(1, 3, 5))
-
-
-def _sum_pool_3d(arr: np.ndarray, pool_r: int, pool_t: int, pool_p: int) -> np.ndarray:
-    """
-    Reduce una malla 3D por Sum Pooling (suma por bloques).
-
-    Idéntico al Average Pooling pero sumando en vez de promediando,
-    lo cual es necesario para conservar la carga total cuando se reduce dV.
-
-    Parameters
-    ----------
-    arr : ndarray, shape (Nr, Nt, Np)
-        Array 3D a reducir.
-    pool_r, pool_t, pool_p : int
-        Factores de pooling en cada eje.
-
-    Returns
-    -------
-    ndarray
-        Array reducido de forma (Nr//pool_r, Nt//pool_t, Np//pool_p).
-    """
-    nr, nt, np_ = arr.shape
-    nr_cut = (nr // pool_r) * pool_r
-    nt_cut = (nt // pool_t) * pool_t
-    np_cut = (np_ // pool_p) * pool_p
-    arr = arr[:nr_cut, :nt_cut, :np_cut]
-
-    return arr.reshape(
-        nr_cut // pool_r, pool_r,
-        nt_cut // pool_t, pool_t,
-        np_cut // pool_p, pool_p,
-    ).sum(axis=(1, 3, 5))
-
-
 def generar_distribucion_carga(
-    mask: list = [0, 1, 1, 1],
-    n_r: int = 40,
-    n_theta: int = 60,
-    n_phi: int = 60,
-    max_r_factor: float = 40,
-    pool_r: int = 2,
-    pool_t: int = 2,
-    pool_p: int = 3,
+    mask,
+    n_x: int = 50,
+    n_y: int = 50,
+    n_z: int = 50,
+    max_r_factor: float = 25,
+    density_threshold: float = 1e-8,
 ) -> tuple:
     """
-    Genera la distribución de carga discreta 3D y devuelve coordenadas,
-    densidades y diferenciales de volumen.
+    Genera una distribución de carga discretizada en una malla cartesiana uniforme.
+    Esto evita los huecos visuales y la no-uniformidad inherente de (r, theta, phi).
 
-    Utiliza Average Pooling para reducir la resolución de la malla 3D
-    en lugar de submuestreo crudo por slicing. Esto promedia la densidad
-    de carga dentro de cada bloque y acumula (sum-pool) los diferenciales
-    de volumen, lo cual CONSERVA ESTRICTAMENTE la carga total integrada.
-
-    Parameters
+    Parámetros
     ----------
-    mask : list of int
-        Máscara de activación de momentos multipolares.
-    n_r, n_theta, n_phi : int
-        Resolución de la malla en coordenadas esféricas.
+    mask : list
+        Máscara de orbitales activos
+    n_x, n_y, n_z : int
+        Número de puntos en cada dimensión (reducido de 60 a 50 para menos vóxeles)
     max_r_factor : float
-        Factor multiplicativo de A0 para el radio máximo.
-    pool_r, pool_t, pool_p : int
-        Factores de pooling (reducción) en cada eje.
-        pool=1 no reduce, pool=2 reduce a la mitad, etc.
+        Factor para el radio máximo (reducido de 40 a 25 A0 ya que la densidad tiende a 0)
+    density_threshold : float
+        Umbral mínimo de densidad de carga para incluir un vóxel.
+        Los vóxeles con |rho| < threshold se descartan.
 
     Returns
     -------
     Xs, Ys, Zs : ndarray, shape (M,)
-        Coordenadas cartesianas de los M vóxeles reducidos.
+        Coordenadas cartesianas de los vóxeles.
     Rs : ndarray, shape (M,)
-        Densidad de carga promediada en cada vóxel.
+        Densidad de carga en cada vóxel.
     dVs : ndarray, shape (M,)
-        Diferencial de volumen acumulado por bloque.
+        Diferencial de volumen constante de cada vóxel.
     """
     n = len(mask)
 
-    # --- malla 3D esférica ---
-    r = np.linspace(0, max_r_factor * A0, n_r)
-    theta = np.linspace(0, np.pi, n_theta)
-    phi = np.linspace(0, 2 * np.pi, n_phi)
+    # Cubo que contiene a la distribución
+    L = max_r_factor * A0
 
-    # Diferenciales uniformes
-    dr = r[1] - r[0] if len(r) > 1 else 0.0
-    dt = theta[1] - theta[0] if len(theta) > 1 else 0.0
-    dp = phi[1] - phi[0] if len(phi) > 1 else 0.0
+    x = np.linspace(-L, L, n_x)
+    y = np.linspace(-L, L, n_y)
+    z = np.linspace(-L, L, n_z)
 
-    R, T, P = np.meshgrid(r, theta, phi, indexing="ij")
+    X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
-    # psi depende de r y theta; phi no cambia nada porque m=0
-    psi_rt = psi_m0_superposition(n=n, r=R[:, :, 0], theta=T[:, :, 0], active_mask=mask)
-    rho_rt = electron_density(psi_rt)
+    # Coordenadas esféricas derivadas
+    R = np.sqrt(X**2 + Y**2 + Z**2)
 
-    # Expandir por simetría axial
-    rho_3d = rho_rt[:, :, None] * np.ones_like(P)
+    Theta = np.zeros_like(R)
+    nz = R > 1e-300
+    Theta[nz] = np.arccos(np.clip(Z[nz] / R[nz], -1.0, 1.0))
 
-    # Coordenadas cartesianas
-    X = R * np.sin(T) * np.cos(P)
-    Y = R * np.sin(T) * np.sin(P)
-    Z = R * np.cos(T)
-
-    # Diferencial de volumen en esféricas: dV = r² sin(θ) dr dθ dφ
-    dV_3d = (R**2) * np.sin(T) * dr * dt * dp
-
-    # Carga por vóxel: q_k = rho_k * dV_k
-    q_3d = rho_3d * dV_3d
-
-    # Carga total antes de pooling (para verificación de conservación)
-    Q_pre_pool = np.sum(q_3d)
-
-    # --- Sum Pooling de la carga por vóxel (conserva Q exactamente) ---
-    q_pooled = _sum_pool_3d(q_3d, pool_r, pool_t, pool_p)
-
-    # --- Sum Pooling de los diferenciales de volumen ---
-    dV_pooled = _sum_pool_3d(dV_3d, pool_r, pool_t, pool_p)
-
-    # Densidad efectiva: rho_eff = Q_bloque / dV_bloque
-    # Evitar div/0 en vóxeles con dV=0 (r=0 o sin(theta)=0)
-    dV_safe = np.where(np.abs(dV_pooled) > 1e-300, dV_pooled, 1.0)
-    rho_pooled = q_pooled / dV_safe
-    # Donde dV=0, la carga también es 0, así que rho puede quedar en 0
-    rho_pooled = np.where(np.abs(dV_pooled) > 1e-300, rho_pooled, 0.0)
-
-    # --- Average Pooling de las coordenadas (centro geométrico del bloque) ---
-    X_pooled = _average_pool_3d(X, pool_r, pool_t, pool_p)
-    Y_pooled = _average_pool_3d(Y, pool_r, pool_t, pool_p)
-    Z_pooled = _average_pool_3d(Z, pool_r, pool_t, pool_p)
-
-    # Verificación de conservación de carga (debe ser exacta a nivel de fp)
-    Q_post_pool = np.sum(q_pooled)
-    rel_error = abs(Q_post_pool - Q_pre_pool) / (abs(Q_pre_pool) + 1e-300)
-    assert rel_error < 1e-12, (
-        f"Error de conservación de carga tras pooling: "
-        f"Q_pre={Q_pre_pool:.6e}, Q_post={Q_post_pool:.6e}, err_rel={rel_error:.2e}"
+    # La densidad cuántica depende de r y theta; phi no entra si m=0
+    psi = psi_m0_superposition(
+        n=n,
+        r=R,
+        theta=Theta,
+        active_mask=mask
     )
+    rho = electron_density(psi)
 
-    # Aplanar para salida
-    Xs = X_pooled.ravel()
-    Ys = Y_pooled.ravel()
-    Zs = Z_pooled.ravel()
-    Rs = rho_pooled.ravel()
-    dVs = dV_pooled.ravel()
+    # Volumen uniforme por celda
+    dx = x[1] - x[0] if n_x > 1 else 0.0
+    dy = y[1] - y[0] if n_y > 1 else 0.0
+    dz = z[1] - z[0] if n_z > 1 else 0.0
+    dV = dx * dy * dz
+
+    dVs = np.full(R.shape, dV, dtype=float)
+
+    # Aplanar salida
+    Xs = X.ravel()
+    Ys = Y.ravel()
+    Zs = Z.ravel()
+    Rs = rho.ravel()
+    dVs = dVs.ravel()
+
+    # --- OPTIMIZACIÓN: Filtrar vóxeles con densidad muy baja ---
+    mask_nonzero = np.abs(Rs) > density_threshold
+    Xs = Xs[mask_nonzero]
+    Ys = Ys[mask_nonzero]
+    Zs = Zs[mask_nonzero]
+    Rs = Rs[mask_nonzero]
+    dVs = dVs[mask_nonzero]
 
     return Xs, Ys, Zs, Rs, dVs
 
 if __name__ == "__main__":
-    Xs, Ys, Zs, Rs, dVs = generar_distribucion_carga()
+    Xs, Ys, Zs, Rs, dVs = generar_distribucion_carga(mask=[0,0 , 0, 1])
 
     # --- transparencia basada en |rho| ---
     mag = np.abs(Rs)

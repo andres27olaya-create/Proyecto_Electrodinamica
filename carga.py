@@ -151,7 +151,7 @@ Zs = Z[::step_r, ::step_t, ::step_p].ravel()
 Rs = rho_3d[::step_r, ::step_t, ::step_p].ravel()
 
 # --- transparencia basada en |rho| ---
-mag = np.abs(Rs)
+mag = Rs
 
 # normalización robusta para que no se aplaste por outliers
 vmin = np.percentile(mag, 5)

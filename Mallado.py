@@ -5,6 +5,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
+from carga2 import A0
+from Ubi_plano import ubicar_cuadrados_en_plano, ubicar_cuadrados_en_plano_arbitrario
 
 class Cubo:
     def __init__(self, punto, longitud_lado):
@@ -246,21 +248,21 @@ def dibujar_resultado(vertices, cuadrados):
 # =========================
 
 # ---- PARÁMETROS DE LA FIGURA ----
-n_lados = 5                 # Número de lados del polígono regular
-radio_figura = 1.0          # Radio del polígono regular
+n_lados = 6                 # Número de lados del polígono regular
+radio_figura = 15 * A0      # Radio del polígono regular
 
 # ---- PARÁMETROS DEL MALLADO ----
-profundidad_maxima = 8      # Máxima profundidad de subdivisión del quadtree
+profundidad_maxima = 8     # Máxima profundidad de subdivisión del quadtree
                             # (mayor = mallado más fino, pero más lento)
 
 # Tamaño mínimo permitido para los cuadrados (para evitar cálculos infinitos)
-lado_minimo = 1e-5
+lado_minimo = A0 / 3
 
 # ---- PARÁMETROS DE REFINAMIENTO ADAPTATIVO ----
 h_min = 0.04                # Tamaño objetivo del cuadrado en el CENTRO de la figura
                             # (menor = mallado más fino en el centro)
 
-h_max = 0.10                # Tamaño objetivo del cuadrado en el BORDE de la figura
+h_max = 0.5               # Tamaño objetivo del cuadrado en el BORDE de la figura
                             # (mayor = cuadrados más grandes en el borde)
 
 alpha = 1.0                 # Factor de transición entre el centro y el borde
@@ -283,8 +285,8 @@ cuadrados = teselar_quadtree(
 # Modificar también la función de tamaño objetivo dentro de teselar_quadtree
 # si necesitas ajustes más avanzados en los parámetros h_min, h_max, alpha
 
-print("Cantidad de cuadrados generados:", len(cuadrados))
-dibujar_resultado(vertices, cuadrados)
+#print("Cantidad de cuadrados generados:", len(cuadrados))
+#dibujar_resultado(vertices, cuadrados)
 
 
 # Cubo1 = Cubo((0, 0, 0), 1)

@@ -1,85 +1,130 @@
 import numpy as np
+from carga2 import EPSILON_0
 
-EPSILON_0 = 8.8541878128e-12  # Permitividad del vacío [F/m]
+K_COULOMB = 1.0 / (4.0 * np.pi * EPSILON_0)
+
 
 def prim1(u, v, c):
     """
     Primitiva analítica exacta de la integral de 1/R sobre una superficie rectangular,
     según J. R. Mosig.
+
+    Soporta escalares o arrays.
     """
-    term1 = u * np.arcsinh(v / np.sqrt(u**2 + c**2))
-    term2 = v * np.arcsinh(u / np.sqrt(v**2 + c**2))
-    term3 = c * np.arctan((u * v) / (c * np.sqrt(u**2 + v**2 + c**2)))
+    u = np.asarray(u, dtype=float)
+    v = np.asarray(v, dtype=float)
+    c = np.asarray(c, dtype=float)
+
+    term1 = u * np.arcsinh(v / np.sqrt(u*u + c*c))
+    term2 = v * np.arcsinh(u / np.sqrt(v*v + c*c))
+    term3 = c * np.arctan((u * v) / (c * np.sqrt(u*u + v*v + c*c)))
+
     return term1 + term2 - term3
+
 
 def discr_gf(xc, yc, zc, a, b):
     """
-    Evalúa la Función de Green Discreta en el centro de una celda de prueba a partir
-    de una celda fuente de dimensiones a x b.
-
-    xc, yc, zc: Distancias relativas entre centro de prueba y centro fuente.
-    a, b: Dimensiones de la celda fuente.
+    Función de Green discreta promediada sobre una celda rectangular fuente.
+    Soporta escalares o arrays.
     """
-    eps = 2.2204e-16
-    zc = zc + eps  # Prevenir indeterminaciones 0/0
+    xc = np.asarray(xc, dtype=float)
+    yc = np.asarray(yc, dtype=float)
+    zc = np.asarray(zc, dtype=float)
 
-    # Límites de integración respecto al centro de la celda fuente
-    u1, u2 = xc - a / 2.0, xc + a / 2.0
-    v1, v2 = yc - b / 2.0, yc + b / 2.0
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
 
-    # Combinación de la primitiva evaluada en los 4 vértices
-    integral = (prim1(u2, v2, zc) 
-              - prim1(u1, v2, zc) 
-              - prim1(u2, v1, zc) 
-              + prim1(u1, v1, zc))
-              
+    # evita 0/0 en el caso singular
+    zc = zc + np.finfo(float).eps
+
+    u1, u2 = xc - 0.5 * a, xc + 0.5 * a
+    v1, v2 = yc - 0.5 * b, yc + 0.5 * b
+
+    integral = (
+        prim1(u2, v2, zc)
+        - prim1(u1, v2, zc)
+        - prim1(u2, v1, zc)
+        + prim1(u1, v1, zc)
+    )
+
     return integral / (a * b)
 
-def stat_mom_element(xb, yb, zb, xt, yt, zt, a, b, tresh=10.0):
-    """
-    Calcula el elemento de matriz MoM entre una celda base y una de prueba.
-    
-    xb, yb, zb: Coordenadas del centro de la celda fuente (base).
-    xt, yt, zt: Coordenadas del centro de la celda de prueba (test).
-    a, b: Dimensiones de la celda fuente.
-    tresh: Umbral para aproximación de campo lejano.
-    """
-    rh = np.sqrt((xt - xb)**2 + (yt - yb)**2 + (zt - zb)**2)
-    max_dim = max(a, b)
-    
-    if rh > tresh * max_dim:
-        # Aproximación rápida 1/r para campo lejano
-        val = 1.0 / rh
-    else:
-        # Integración exacta
-        xc, yc, zc = xt - xb, yt - yb, zt - zb
-        val = discr_gf(xc, yc, zc, a, b)
-        
-    return (1.0 / (4.0 * np.pi * EPSILON_0)) * val
 
-def build_mom_matrix(cuadrados, z_placa=0.0, tresh=10.0):
+def build_mom_matrix(cuadrados_3d, tresh=10.0, assume_symmetric=True):
     """
-    Construye la matriz de impedancia estática [C] para el Método de Momentos.
-    
-    cuadrados: Lista de celdas (cx, cy, lado).
-    z_placa: Elevación z de la placa.
-    tresh: Umbral para la aproximación de campo lejano.
-    
-    Retorna
-    -------
-    C : ndarray
-        Matriz de impedancia de tamaño NxN.
+    Construye la matriz MoM estática [C].
+
+    cuadrados_3d: lista/array de celdas (x, y, z, lado)
+    tresh: umbral para usar aproximación 1/r en campo lejano
+    assume_symmetric:
+        True  -> calcula solo la mitad superior y refleja (más rápido)
+        False -> calcula toda la matriz sin imponer simetría
     """
-    N = len(cuadrados)
-    C = np.zeros((N, N))
-    
-    for i in range(N):
-        xt, yt, lt = cuadrados[i]
-        zt = z_placa
-        for j in range(N):
-            xb, yb, lb = cuadrados[j]
-            zb = z_placa
-            # Como las celdas son cuadradas, a = b = lb
-            C[i, j] = stat_mom_element(xb, yb, zb, xt, yt, zt, lb, lb, tresh)
-            
+    coords = np.asarray(cuadrados_3d, dtype=float)
+    if coords.ndim != 2 or coords.shape[1] != 4:
+        raise ValueError("cuadrados_3d debe tener forma (N, 4) con columnas (x, y, z, lado).")
+
+    x = coords[:, 0]
+    y = coords[:, 1]
+    z = coords[:, 2]
+    lado = coords[:, 3]
+
+    N = len(coords)
+    C = np.zeros((N, N), dtype=float)
+
+    if assume_symmetric:
+        for i in range(N):
+            # Distancias del punto de prueba i a todas las fuentes j
+            dx = np.abs(x[i] - x)
+            dy = np.abs(y[i] - y)
+            dz = np.abs(z[i] - z)
+
+            rh = np.sqrt(dx*dx + dy*dy + dz*dz)
+
+            # Aproximación de campo lejano
+            row = np.divide(
+                K_COULOMB,
+                rh,
+                out=np.zeros_like(rh),
+                where=rh > 0.0
+            )
+
+            # Celdas cercanas: integral exacta
+            near = rh <= (tresh * lado)
+            if np.any(near):
+                row[near] = K_COULOMB * discr_gf(
+                    dx[near], dy[near], dz[near],
+                    lado[near], lado[near]
+                )
+
+            # imponer simetría
+            C[i, :] = row
+            C[:, i] = row
+
+    else:
+        for i in range(N):
+            xt, yt, zt = x[i], y[i], z[i]
+
+            dx = np.abs(xt - x)
+            dy = np.abs(yt - y)
+            dz = np.abs(zt - z)
+
+            rh = np.sqrt(dx*dx + dy*dy + dz*dz)
+
+            row = np.divide(
+                K_COULOMB,
+                rh,
+                out=np.zeros_like(rh),
+                where=rh > 0.0
+            )
+
+            near = rh <= (tresh * lado)
+            if np.any(near):
+                row[near] = K_COULOMB * discr_gf(
+                    dx[near], dy[near], dz[near],
+                    lado[near], lado[near]
+                )
+
+            C[i, :] = row
+
     return C
