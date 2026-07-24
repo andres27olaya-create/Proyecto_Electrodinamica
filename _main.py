@@ -4,32 +4,33 @@ from potencial_cuantico import calcular_potencial_excitacion
 from Mallado import generar_vertices_poligono_regular, teselar_quadtree, dibujar_resultado
 from mom_pm_solver import build_mom_matrix
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 import numpy as np
 
 if __name__ == "__main__":
 
     print("=== Calculo distribucion de carga cuántica y visualización 3D ===")
-    Xs, Ys, Zs, Rs, dVs = generar_distribucion_carga(mask=[1,1 , 0, 1])
+    Xs, Ys, Zs, Rs, dVs = generar_distribucion_carga(mask=[1,0,0,1])
 
-    # # --- transparencia basada en |rho| ---
-    # mag = np.abs(Rs)
+    # --- transparencia basada en |rho| ---
+    mag = np.abs(Rs)
 
-    # # normalización robusta para que no se aplaste por outliers
-    # vmin = np.percentile(mag, 5)
-    # vmax = np.percentile(mag, 95)
-    # norm = np.clip((mag - vmin) / (vmax - vmin + 1e-30), 0, 1)
+    # normalización robusta para que no se aplaste por outliers
+    vmin = np.percentile(mag, 5)
+    vmax = np.percentile(mag, 95)
+    norm = np.clip((mag - vmin) / (vmax - vmin + 1e-30), 0, 1)
 
-    # # alpha: bajo -> transparente, alto -> opaco
-    # alpha_min = 0.03
-    # alpha_max = 0.95
-    # alphas = alpha_min + (alpha_max - alpha_min) * norm
+    # alpha: bajo -> transparente, alto -> opaco
+    alpha_min = 0.03
+    alpha_max = 0.95
+    alphas = alpha_min + (alpha_max - alpha_min) * norm
 
-    # # color por magnitud, transparencia por alpha
-    # cmap = plt.cm.viridis
-    # colors = cmap(norm)
-    # colors[:, 3] = alphas
+    # color por magnitud, transparencia por alpha
+    cmap = plt.cm.viridis
+    colors = cmap(norm)
+    colors[:, 3] = alphas
 
-    # # --- gráfica ---
+    # --- gráfica ---
     # fig = plt.figure(figsize=(10, 8))
     # ax = fig.add_subplot(111, projection='3d')
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     # ax.set_ylabel('y (m)')
     # ax.set_zlabel('z (m)')
     # ax.set_title('Distribución 3D con transparencia según |ρ|')
-    # #plt.show()
+    #plt.show()
 
    
     n_lados = 6                 # Número de lados del polígono regular
@@ -60,51 +61,51 @@ if __name__ == "__main__":
         h_max=h_max,
         alpha=alpha
     )
-    dibujar_resultado(vertices, cuadrados)
+    # dibujar_resultado(vertices, cuadrados)
 
 
     plan= "yz"
-    offs=0
+    offs=25
     cuadrado_3d = ubicar_cuadrados_en_plano(cuadrados, plano=plan, offset=offs)
     
     # # --- Transformar vértices al mismo plano que los cuadrados ---
     vertices_3d = ubicar_vertices_en_plano(vertices, plano=plan, offset=offs)
     
-    # # --- Gráfica combinada: distribución de carga + vértices en el mismo plano ---
-    # fig = plt.figure(figsize=(12, 10))
-    # ax = fig.add_subplot(111, projection='3d')
+    # --- Gráfica combinada: distribución de carga + vértices en el mismo plano ---
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
     
-    # # Graficar la distribución de carga
-    # mag = np.abs(Rs)
-    # vmin = np.percentile(mag, 5)
-    # vmax = np.percentile(mag, 95)
-    # norm = np.clip((mag - vmin) / (vmax - vmin + 1e-30), 0, 1)
+    # Graficar la distribución de carga
+    mag = np.abs(Rs)
+    vmin = np.percentile(mag, 5)
+    vmax = np.percentile(mag, 95)
+    norm = np.clip((mag - vmin) / (vmax - vmin + 1e-30), 0, 1)
     
-    # alpha_min = 0.03
-    # alpha_max = 0.95
-    # alphas = alpha_min + (alpha_max - alpha_min) * norm
+    alpha_min = 0.03
+    alpha_max = 0.95
+    alphas = alpha_min + (alpha_max - alpha_min) * norm
     
-    # cmap = plt.cm.viridis
-    # colors = cmap(norm)
-    # colors[:, 3] = alphas
+    cmap = plt.cm.viridis
+    colors = cmap(norm)
+    colors[:, 3] = alphas
     
-    # # pyrefly: ignore [bad-keyword-argument]
-    # ax.scatter(Xs, Ys, Zs, c=colors, s=6, marker='o', label='Distribución de carga')
+    # pyrefly: ignore [bad-keyword-argument]
+    ax.scatter(Xs, Ys, Zs, c=colors, s=6, marker='o', label='Distribución de carga')
     
-    # # Graficar los vértices transformados
-    # ax.plot(vertices_3d[:, 0], vertices_3d[:, 1], vertices_3d[:, 2], 
-    #         'r-o', linewidth=2, markersize=8, label='Vértices de la figura')
-    # # Cerrar la figura (conectar el último vértice con el primero)
-    # ax.plot([vertices_3d[-1, 0], vertices_3d[0, 0]], 
-    #         [vertices_3d[-1, 1], vertices_3d[0, 1]], 
-    #         [vertices_3d[-1, 2], vertices_3d[0, 2]], 'r-', linewidth=2)
+    # Graficar los vértices transformados
+    ax.plot(vertices_3d[:, 0], vertices_3d[:, 1], vertices_3d[:, 2], 
+            'r-o', linewidth=2, markersize=8, label='Vértices de la figura')
+    # Cerrar la figura (conectar el último vértice con el primero)
+    ax.plot([vertices_3d[-1, 0], vertices_3d[0, 0]], 
+            [vertices_3d[-1, 1], vertices_3d[0, 1]], 
+            [vertices_3d[-1, 2], vertices_3d[0, 2]], 'r-', linewidth=2)
     
-    # ax.set_xlabel('x (m)')
-    # ax.set_ylabel('y (m)')
-    # ax.set_zlabel('z (m)')
-    # ax.set_title('Distribución 3D de carga con vértices de la figura en plano YZ')
-    # ax.legend()
-    # plt.show()
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_zlabel('z (m)')
+    ax.set_title('Distribución 3D de carga con vértices de la figura en plano YZ')
+    ax.legend()
+    plt.show()
     
     # --- Calcular potencial de excitación en la malla 3D ---
     print("\n=== Calculando potencial de excitación en la malla ===")
@@ -214,33 +215,47 @@ if __name__ == "__main__":
     if alpha is not None:
         print("\n=== Generando visualización de densidad superficial inducida ===")
         fig, ax = plt.subplots(figsize=(12, 10))
-        
-        alpha_norm = np.abs(alpha)
-        alpha_min = np.min(alpha_norm)
-        alpha_max = np.max(alpha_norm)
-        
-        scatter_alpha = ax.scatter(centros_y_2d, centros_z_2d, c=alpha_norm, cmap='coolwarm', 
-                                   s=50, marker='s', edgecolors='black', linewidth=0.5)
-        
-        ax.plot(vertices_3d[:, 1], vertices_3d[:, 2], 
+
+        alpha = np.asarray(alpha, dtype=float)
+
+        alpha_min = np.min(alpha)
+        alpha_max = np.max(alpha)
+
+        # Centro de color:
+        # si hay cambio de signo, usa 0.
+        # si no, usa la mediana para forzar contraste visual.
+        if alpha_min < 0 < alpha_max:
+            alpha_mid = 0.0
+        else:
+            alpha_mid = np.median(alpha)
+
+        norm = TwoSlopeNorm(vmin=alpha_min, vcenter=alpha_mid, vmax=alpha_max)
+
+        scatter_alpha = ax.scatter(
+            centros_y_2d, centros_z_2d,
+            c=alpha,
+            cmap="seismic",
+            norm=norm,
+            s=120,
+            marker='s',
+            edgecolors='black',
+            linewidth=0.5
+        )
+
+        ax.plot(vertices_3d[:, 1], vertices_3d[:, 2],
                 'k-o', linewidth=2, markersize=10, label='Vértices de la figura')
-        ax.plot([vertices_3d[-1, 1], vertices_3d[0, 1]], 
+        ax.plot([vertices_3d[-1, 1], vertices_3d[0, 1]],
                 [vertices_3d[-1, 2], vertices_3d[0, 2]], 'k-', linewidth=2)
-        
+
         ax.set_xlabel('y (m)', fontsize=12)
         ax.set_ylabel('z (m)', fontsize=12)
         ax.set_title('Densidad de Carga Superficial Inducida σ (C/m²)', fontsize=14, fontweight='bold')
         ax.set_aspect('equal')
         ax.grid(True, alpha=0.3)
         ax.legend(fontsize=11)
-        
+
         cbar_alpha = plt.colorbar(scatter_alpha, ax=ax)
         cbar_alpha.set_label('σ (C/m²)', rotation=270, labelpad=20)
-        
+
         plt.tight_layout()
         plt.show()
-
-
-
-
-
